@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>DeVibe System Simple</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      padding: 20px; 
+      margin: 0;
+    }
+    h2 {
+      margin-top: 0;
+      color: #333;
+    }
+    button { 
+      margin: 10px 0; 
+      padding: 10px 20px; 
+      width: 100%;
+      border: 1px solid #ccc;
+      background: #f5f5f5;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background: #e5e5e5;
+    }
+    #results {
+      margin-top: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      padding: 10px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h2>DeVibe System - Simple Extractor</h2>
+  <button id="extract-btn">Extract Design Tokens</button>
+  <button id="close-btn">Close Plugin</button>
+  <div id="results">Click "Extract Design Tokens" to see your colors and typography.</div>
+  <script>
+    console.log('Inline script running');
+    
+    // Test if we can access elements
+    setTimeout(function() {
+      console.log('Testing element access...');
+      var btn = document.getElementById('extract-btn');
+      console.log('Button found:', !!btn);
+      
+      if (btn) {
+        btn.onclick = function() {
+          console.log('Button clicked via inline handler');
+          parent.postMessage({ pluginMessage: { type: 'extract-basic' } }, '*');
+        };
+      }
+      
+      // Test plugin-to-UI communication
+      window.addEventListener('message', function(event) {
+        console.log('Message received:', event.data);
+      });
+      
+    }, 100);
+  </script>
+  <script src="ui-simple.js"></script>
+</body>
+</html>

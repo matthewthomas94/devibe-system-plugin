@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "lib": ["ES2018", "DOM", "DOM.Iterable"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["./*"],
+      "@/extractors/*": ["./extractors/*"],
+      "@/generators/*": ["./generators/*"],
+      "@/formatters/*": ["./formatters/*"],
+      "@/utils/*": ["./utils/*"]
+    },
+    "types": [
+      "@figma/plugin-typings"
+    ],
+    "noImplicitAny": false
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

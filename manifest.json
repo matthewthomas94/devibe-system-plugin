@@ -1,0 +1,23 @@
+{
+  "name": "DeVibe System - AI-Optimized Design System Extractor",
+  "id": "devibe-system-ai-extractor",
+  "api": "1.0.0",
+  "main": "dist/code-simple.js",
+  "ui": "dist/ui-simple.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  },
+  "permissions": [
+    "currentuser"
+  ],
+  "editorType": [
+    "figma"
+  ],
+  "menu": [
+    {
+      "name": "Extract Design System for AI Tools",
+      "command": "extract-design-system"
+    }
+  ]
+}
