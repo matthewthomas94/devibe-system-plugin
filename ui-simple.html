@@ -27,8 +27,8 @@
     }
     #results {
       margin-top: 20px;
-      max-height: 400px;
-      overflow-y: auto;
+      max-height: none;
+      overflow-y: visible;
       border: 1px solid #eee;
       padding: 10px;
       border-radius: 4px;
@@ -36,33 +36,206 @@
   </style>
 </head>
 <body>
-  <h2>DeVibe System - Simple Extractor</h2>
-  <button id="extract-btn">Extract Design Tokens</button>
+  <h2>DeVibe System - Complete Extractor</h2>
+  <button id="extract-btn">Extract Complete Design System</button>
   <button id="close-btn">Close Plugin</button>
-  <div id="results">Click "Extract Design Tokens" to see your colors and typography.</div>
+  <div id="results">Click "Extract Complete Design System" to analyze your design tokens, component usage, and generate AI-optimized markdown documentation.</div>
+  
+  <!-- Working inline script -->
   <script>
-    console.log('Inline script running');
+    console.log('📄 Setting up working button handler...');
     
-    // Test if we can access elements
     setTimeout(function() {
-      console.log('Testing element access...');
       var btn = document.getElementById('extract-btn');
-      console.log('Button found:', !!btn);
-      
       if (btn) {
+        btn.style.background = '#007ACC';
+        btn.style.color = 'white';
+        
         btn.onclick = function() {
-          console.log('Button clicked via inline handler');
-          parent.postMessage({ pluginMessage: { type: 'extract-basic' } }, '*');
+          console.log('🚀 EXTRACT BUTTON CLICKED - SENDING MESSAGE');
+          try {
+            parent.postMessage({ pluginMessage: { type: 'extract-basic' } }, '*');
+            console.log('✅ Message sent to plugin');
+          } catch (error) {
+            console.error('❌ Error sending message:', error);
+          }
         };
+        console.log('✅ Working button handler set up');
+      }
+    }, 100);
+    
+    // Also set up message listener
+    window.addEventListener('message', function(event) {
+      console.log('📨 UI received message:', event.data);
+      console.log('Event data keys:', Object.keys(event.data || {}));
+      
+      // Handle the pluginMessage wrapper
+      var message = event.data.pluginMessage || event.data;
+      console.log('Extracted message:', message);
+      console.log('Message type:', message?.type);
+      
+      if (message && message.type === 'extraction-complete') {
+        console.log('🎉 Extraction complete!');
+        displayExtractionResults(message);
+      }
+    });
+    
+    // Function to display complete extraction results
+    function displayExtractionResults(data) {
+      var results = document.getElementById('results');
+      if (!results) return;
+      
+      var html = '<h3>🎉 Complete Design System Extraction!</h3>';
+      
+      // Summary stats
+      html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0;">';
+      html += '<div style="padding: 10px; background: #f8f9fa; border-radius: 4px; text-align: center;">';
+      html += '<strong style="display: block; font-size: 18px; color: #007ACC;">' + data.data.metadata.totalVariables + '</strong>';
+      html += '<small>Variables</small>';
+      html += '</div>';
+      html += '<div style="padding: 10px; background: #f0f8ff; border-radius: 4px;">';
+      var totalStyles = data.data.metadata.totalTextStyles + data.data.metadata.totalPaintStyles + data.data.metadata.totalEffectStyles + data.data.metadata.totalGridStyles;
+      var isModern = data.data.metadata.totalVariables > 0 && data.data.metadata.totalPaintStyles === 0;
+      var isLegacy = data.data.metadata.totalPaintStyles > 0 && data.data.metadata.totalVariables === 0;
+      var isHybrid = data.data.metadata.totalVariables > 0 && data.data.metadata.totalPaintStyles > 0;
+      
+      html += '<div style="text-align: center; margin-bottom: 8px;">';
+      html += '<strong style="display: block; font-size: 18px; color: #28a745;">' + totalStyles + '</strong>';
+      if (isModern) {
+        html += '<small>🎯 Modern (Variables + Styles)</small>';
+      } else if (isLegacy) {
+        html += '<small>🎨 Legacy (Styles Only)</small>';
+      } else if (isHybrid) {
+        html += '<small>🔀 Hybrid System</small>';
+      } else {
+        html += '<small>Design Tokens</small>';
+      }
+      html += '</div>';
+      
+      html += '<div style="font-size: 12px; text-align: left;">';
+      html += '<div style="display: flex; justify-content: space-between;"><span>Colors:</span><span>' + data.data.metadata.totalPaintStyles + (data.data.metadata.totalPaintStyles === 0 ? ' (variables)' : '') + '</span></div>';
+      html += '<div style="display: flex; justify-content: space-between;"><span>Typography:</span><span>' + data.data.metadata.totalTextStyles + '</span></div>';
+      html += '<div style="display: flex; justify-content: space-between;"><span>Effects:</span><span>' + data.data.metadata.totalEffectStyles + '</span></div>';
+      html += '<div style="display: flex; justify-content: space-between;"><span>Layout:</span><span>' + data.data.metadata.totalGridStyles + '</span></div>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+      
+      // Markdown section if available
+      if (data.markdown) {
+        html += '<div style="margin: 20px 0; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">';
+        html += '<div style="background: #f8f9fa; padding: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">';
+        html += '<h4 style="margin: 0; color: #333;">📝 AI-Optimized Design System Documentation</h4>';
+        html += '<div style="display: flex; gap: 10px;">';
+        html += '<button id="copy-markdown-btn" style="background:#6f42c1; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer; font-size:12px;">📋 Copy to Clipboard</button>';
+        html += '<button id="download-markdown-btn" style="background:#28a745; color:white; padding:8px 16px; border:none; border-radius:4px; cursor:pointer; font-size:12px;">💾 Download MD</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div style="background: #fff; padding: 20px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; line-height: 1.4; white-space: pre-wrap;">';
+        html += data.markdown.substring(0, 2000) + (data.markdown.length > 2000 ? '\\n\\n... (' + (data.markdown.length - 2000) + ' more characters)' : '');
+        html += '</div>';
+        html += '</div>';
+        
+        // Store markdown for copying/downloading
+        window.markdownContent = data.markdown;
+        window.markdownFileName = data.fileName || 'design-system.md';
+        console.log('📝 Stored markdown content, length:', window.markdownContent ? window.markdownContent.length : 0);
+        console.log('📝 Stored filename:', window.markdownFileName);
       }
       
-      // Test plugin-to-UI communication
-      window.addEventListener('message', function(event) {
-        console.log('Message received:', event.data);
-      });
+      results.innerHTML = html;
       
-    }, 100);
+      // Add button handlers
+      setTimeout(function() {
+        var copyBtn = document.getElementById('copy-markdown-btn');
+        var downloadBtn = document.getElementById('download-markdown-btn');
+        
+        if (copyBtn) {
+          console.log('🔧 Setting up copy button');
+          console.log('🔧 Button found:', !!copyBtn);
+          console.log('🔧 Initial content check:', !!window.markdownContent);
+          
+          copyBtn.onclick = function() {
+            console.log('📋 Copy button clicked');
+            console.log('Markdown content available:', !!window.markdownContent);
+            console.log('Markdown content length:', window.markdownContent ? window.markdownContent.length : 0);
+            console.log('Navigator clipboard available:', !!navigator.clipboard);
+            console.log('Document execCommand available:', !!document.execCommand);
+            
+            if (!window.markdownContent) {
+              console.log('❌ No markdown content stored');
+              copyBtn.textContent = '❌ No Content';
+              return;
+            }
+            
+            // Try the fallback method first since clipboard API is restricted in Figma
+            console.log('Using textarea fallback method...');
+            try {
+              var textarea = document.createElement('textarea');
+              textarea.value = window.markdownContent;
+              textarea.style.position = 'fixed';
+              textarea.style.left = '-999999px';
+              textarea.style.top = '-999999px';
+              document.body.appendChild(textarea);
+              textarea.focus();
+              textarea.select();
+              
+              var success = document.execCommand('copy');
+              document.body.removeChild(textarea);
+              
+              if (success) {
+                console.log('✅ Fallback copy successful');
+                copyBtn.textContent = '✅ Copied!';
+                copyBtn.style.background = '#28a745';
+                setTimeout(function() {
+                  copyBtn.textContent = '📋 Copy to Clipboard';
+                  copyBtn.style.background = '#6f42c1';
+                }, 2000);
+              } else {
+                console.log('❌ Fallback copy failed');
+                copyBtn.textContent = '❌ Copy Failed';
+                
+                // Try clipboard API as secondary
+                if (navigator.clipboard) {
+                  console.log('Trying clipboard API as backup...');
+                  navigator.clipboard.writeText(window.markdownContent).then(function() {
+                    console.log('✅ Clipboard API successful');
+                    copyBtn.textContent = '✅ Copied!';
+                    copyBtn.style.background = '#28a745';
+                    setTimeout(function() {
+                      copyBtn.textContent = '📋 Copy to Clipboard';
+                      copyBtn.style.background = '#6f42c1';
+                    }, 2000);
+                  }).catch(function(err) {
+                    console.error('❌ Both methods failed:', err);
+                    copyBtn.textContent = '❌ Failed';
+                  });
+                }
+              }
+            } catch (fallbackErr) {
+              console.error('❌ Fallback method failed:', fallbackErr);
+              copyBtn.textContent = '❌ Error';
+            }
+          };
+        } else {
+          console.log('❌ Copy button not found');
+        }
+        
+        if (downloadBtn && window.markdownContent) {
+          downloadBtn.onclick = function() {
+            var blob = new Blob([window.markdownContent], { type: 'text/markdown' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = window.markdownFileName;
+            a.click();
+            URL.revokeObjectURL(url);
+          };
+        }
+      }, 100);
+    }
+    
+    console.log('✅ Inline handlers ready');
   </script>
-  <script src="ui-simple.js"></script>
 </body>
 </html>
