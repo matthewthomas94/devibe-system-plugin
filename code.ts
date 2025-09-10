@@ -2,10 +2,8 @@
 import { PluginMessage, PluginState, ExtractionConfig, AIOptimizedOutput } from './types';
 
 // Import extractors
-import { ColorExtractor } from './extractors/colors';
-import { TypographyExtractor } from './extractors/typography';
-import { SpacingExtractor } from './extractors/spacing';
 import { ComponentExtractor } from './extractors/components';
+import { DesignSystemExtractor } from './extractors/design-system-extractor';
 
 // Import generators
 import { UtilityCSSGenerator } from './generators/utility-css';
@@ -89,38 +87,32 @@ async function handleTokenExtraction(config: ExtractionConfig) {
   currentState.config = Object.assign({}, currentState.config, config);
   
   try {
-    figma.ui.postMessage({ type: 'status', message: 'Analyzing design system...' });
+    figma.ui.postMessage({ type: 'status', message: 'Starting enhanced design system extraction with variable resolution...' });
     
-    // Initialize extractors
-    const colorExtractor = new ColorExtractor();
-    const typographyExtractor = new TypographyExtractor();
-    const spacingExtractor = new SpacingExtractor();
-    const componentExtractor = new ComponentExtractor();
+    // Get Figma file data for variable resolution
+    const figmaData = await getFigmaFileData();
     
-    // Extract design tokens
+    // Use enhanced design system extractor
+    const designSystemExtractor = new DesignSystemExtractor();
+    const extractionResult = await designSystemExtractor.extractDesignSystem(figmaData);
+    
+    // Update UI with extraction progress and stats
+    figma.ui.postMessage({ 
+      type: 'status', 
+      message: `Variable resolution complete! Resolved ${extractionResult.resolutionStats.resolvedAliases} aliases from ${extractionResult.resolutionStats.totalVariables} variables.` 
+    });
+    
+    // Combine all extracted tokens
     let extractedTokens: any[] = [];
+    extractedTokens = extractedTokens.concat(extractionResult.colors.tokens);
+    extractedTokens = extractedTokens.concat(extractionResult.typography);
+    extractedTokens = extractedTokens.concat(extractionResult.spacing);
+    
+    // Extract components if requested
     let analyzedComponents: any[] = [];
-    
-    if (config.includeColors) {
-      figma.ui.postMessage({ type: 'status', message: 'Extracting colors...' });
-      const colors = await colorExtractor.extractColors();
-      extractedTokens = extractedTokens.concat(colors);
-    }
-    
-    if (config.includeTypography) {
-      figma.ui.postMessage({ type: 'status', message: 'Analyzing typography...' });
-      const typography = await typographyExtractor.extractTypography();
-      extractedTokens = extractedTokens.concat(typography);
-    }
-    
-    if (config.includeSpacing) {
-      figma.ui.postMessage({ type: 'status', message: 'Calculating spacing patterns...' });
-      const spacing = await spacingExtractor.extractSpacing();
-      extractedTokens = extractedTokens.concat(spacing);
-    }
-    
     if (config.includeComponents) {
       figma.ui.postMessage({ type: 'status', message: 'Analyzing components...' });
+      const componentExtractor = new ComponentExtractor();
       const components = await componentExtractor.extractComponents();
       analyzedComponents = analyzedComponents.concat(components);
     }
@@ -140,27 +132,90 @@ async function handleTokenExtraction(config: ExtractionConfig) {
       }
     }
     
+    // Store enhanced extraction results
     currentState.extractedTokens = extractedTokens;
     currentState.analyzedComponents = analyzedComponents;
+    (currentState as any).designSystemResult = extractionResult; // Store full result for later use
     currentState.currentStep = 'configure';
     currentState.isProcessing = false;
     
-    // Send results to UI
+    // Send results to UI with enhanced information
     figma.ui.postMessage({
       type: 'analyze-complete',
       tokens: extractedTokens,
-      components: analyzedComponents
+      components: analyzedComponents,
+      resolutionStats: extractionResult.resolutionStats,
+      extractionSummary: extractionResult.summary
     });
     
     figma.ui.postMessage({ 
       type: 'status', 
-      message: `Analysis complete! Found ${extractedTokens.length} tokens and ${analyzedComponents.length} components.` 
+      message: `Enhanced extraction complete! Found ${extractedTokens.length} tokens, ${analyzedComponents.length} components. Resolved ${extractionResult.resolutionStats.resolvedAliases} variable aliases in ${extractionResult.summary.extractionTime}ms.` 
+    });
+    
+    // Also provide the enhanced markdown documentation
+    figma.ui.postMessage({
+      type: 'enhanced-markdown-ready',
+      markdown: extractionResult.markdown
     });
     
   } catch (error) {
     currentState.isProcessing = false;
     throw error;
   }
+}
+
+async function getFigmaFileData(): Promise<any> {
+  // This function collects comprehensive Figma file data including variables
+  const data: any = {
+    pages: [],
+    styles: {
+      paint: figma.getLocalPaintStyles(),
+      text: figma.getLocalTextStyles(),
+      effect: figma.getLocalEffectStyles(),
+      grid: figma.getLocalGridStyles()
+    },
+    components: figma.root.findAll(node => node.type === 'COMPONENT' || node.type === 'COMPONENT_SET'),
+    variables: {},
+    variableCollections: []
+  };
+  
+  // Collect variable data if available
+  try {
+    // Get all variable collections
+    const collections = figma.variables.getLocalVariableCollections();
+    data.variableCollections = collections;
+    
+    // Get all variables from collections
+    for (const collection of collections) {
+      const variables = collection.variableIds.map(id => figma.variables.getVariableById(id));
+      data.variables[collection.id] = variables.filter(v => v !== null);
+    }
+    
+    // Also try to get variables directly
+    const allVariables = figma.variables.getLocalVariables();
+    if (allVariables.length > 0) {
+      data.allVariables = allVariables;
+    }
+  } catch (error) {
+    console.warn('Could not access Figma variables API:', error);
+    // Fallback to style-based extraction
+  }
+  
+  // Collect page data
+  for (const page of figma.root.children) {
+    data.pages.push({
+      id: page.id,
+      name: page.name,
+      children: page.children.map(node => ({
+        id: node.id,
+        name: node.name,
+        type: node.type
+      }))
+    });
+  }
+  
+  return data;
 }
 
 async function handleOutputGeneration(formats: string[]) {

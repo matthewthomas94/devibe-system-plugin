@@ -47,7 +47,7 @@ export interface ComponentVariant {
 
 export interface AnalyzedComponent {
   name: string;
-  type: 'button' | 'input' | 'card' | 'modal' | 'navigation' | 'layout' | 'other';
+  type: 'button' | 'input' | 'card' | 'modal' | 'navigation' | 'layout' | 'table' | 'form' | 'media' | 'feedback' | 'other';
   variants: ComponentVariant[];
   props: ComponentProp[];
   usage: string[];
@@ -70,6 +70,19 @@ export interface AccessibilityInfo {
   keyboardNavigation: boolean;
   colorContrast: 'AA' | 'AAA' | 'fail';
   focusManagement: boolean;
+}
+
+export interface ComponentUsageAnalysis {
+  instanceCount: number;
+  usageContexts: string[];
+  pagesUsed: string[];
+  examples: ComponentUsageExample[];
+}
+
+export interface ComponentUsageExample {
+  name: string;
+  page: string;
+  context: string;
 }
 
 // AI Tool Output Types
@@ -124,6 +137,46 @@ export interface UsagePattern {
   description: string;
   code: string;
   usage: string;
+}
+
+// Variable Resolution Types
+export interface FigmaVariable {
+  id: string;
+  name: string;
+  description?: string;
+  type: string;
+  scopes: string[];
+  modes: Record<string, VariableValue>;
+  valuesByMode?: Record<string, VariableValue>;
+}
+
+export interface VariableValue {
+  type?: 'VARIABLE_ALIAS';
+  id?: string;
+  hex?: string;
+  rgb?: { r: number; g: number; b: number };
+  value?: any;
+  r?: number;
+  g?: number;
+  b?: number;
+}
+
+export interface ResolvedVariable {
+  id: string;
+  name: string;
+  modes: Record<string, any>;
+}
+
+export interface VariableResolutionResult {
+  resolved: any;
+  primitiveCount: number;
+  aliasCount: number;
+  resolutionStats: {
+    totalVariables: number;
+    resolvedAliases: number;
+    unresolvedAliases: number;
+    primitiveValues: number;
+  };
 }
 
 // Utility Types

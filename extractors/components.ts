@@ -1,63 +1,230 @@
-import { AnalyzedComponent, ComponentVariant, ComponentProp, AccessibilityInfo } from '../types';
+import { AnalyzedComponent, ComponentVariant, ComponentProp, AccessibilityInfo, ComponentUsageAnalysis } from '../types';
 
 export class ComponentExtractor {
   private componentTypePatterns: Record<string, RegExp[]> = {
     'button': [
       /btn|button/i,
       /cta|call.to.action/i,
-      /link.*button|button.*link/i
+      /link.*button|button.*link/i,
+      /action.*button|button.*action/i,
+      /submit|confirm|cancel/i,
+      /toggle.*button|switch.*button/i,
+      /fab|floating.*action/i
     ],
     'input': [
       /input|field/i,
       /text.*field|field.*text/i,
-      /search.*box|search.*field/i,
-      /textarea/i
+      /search.*box|search.*field|search.*input/i,
+      /textarea|text.*area/i,
+      /form.*field|form.*input/i,
+      /select|dropdown|combobox/i,
+      /checkbox|radio|switch/i,
+      /slider|range/i,
+      /date.*picker|time.*picker/i,
+      /upload|file.*input/i
     ],
     'card': [
       /card/i,
       /tile/i,
-      /panel/i
+      /panel/i,
+      /widget/i,
+      /item.*card|product.*card/i,
+      /post.*card|article.*card/i,
+      /user.*card|profile.*card/i
     ],
     'modal': [
       /modal|dialog/i,
       /popup|overlay/i,
-      /drawer/i
+      /drawer/i,
+      /sheet.*modal|bottom.*sheet/i,
+      /alert.*dialog|confirm.*dialog/i,
+      /toast|notification/i,
+      /tooltip|popover/i,
+      /lightbox/i
     ],
     'navigation': [
       /nav|navigation/i,
       /menu/i,
       /breadcrumb/i,
-      /tab/i
+      /tab/i,
+      /sidebar|side.*nav/i,
+      /top.*nav|header.*nav/i,
+      /pagination/i,
+      /stepper/i,
+      /progress.*nav/i
     ],
     'layout': [
       /container|wrapper/i,
       /grid|layout/i,
       /section|header|footer/i,
-      /sidebar/i
+      /sidebar/i,
+      /main.*content|content.*area/i,
+      /hero.*section/i,
+      /banner/i,
+      /divider|separator/i,
+      /spacer/i
+    ],
+    'table': [
+      /table|data.*table/i,
+      /grid.*view|list.*view/i,
+      /row|column/i,
+      /cell|header.*cell/i
+    ],
+    'form': [
+      /form/i,
+      /fieldset/i,
+      /form.*group/i,
+      /validation/i
+    ],
+    'media': [
+      /image|img/i,
+      /avatar|profile.*pic/i,
+      /video|media/i,
+      /icon/i,
+      /logo/i,
+      /badge|chip|tag/i
+    ],
+    'feedback': [
+      /loading|spinner/i,
+      /progress.*bar|progress.*indicator/i,
+      /skeleton|placeholder/i,
+      /error.*state|empty.*state/i,
+      /success.*message|error.*message/i
     ]
   };
 
   async extractComponents(): Promise<AnalyzedComponent[]> {
+    console.log('🔍 Starting comprehensive component extraction...');
     const components: AnalyzedComponent[] = [];
-    const componentSets = figma.root.findAll(node => node.type === 'COMPONENT_SET');
-    const singleComponents = figma.root.findAll(node => node.type === 'COMPONENT');
+    const processedComponents = new Set<string>();
 
-    // Process component sets (components with variants)
-    for (const componentSet of componentSets as ComponentSetNode[]) {
-      const analyzedComponent = await this.analyzeComponentSet(componentSet);
-      components.push(analyzedComponent);
+    // Strategy 1: Find all component sets and components globally
+    console.log('Finding all component sets...');
+    const componentSets = figma.root.findAll(node => node.type === 'COMPONENT_SET') as ComponentSetNode[];
+    console.log(`Found ${componentSets.length} component sets`);
+
+    console.log('Finding all single components...');
+    const singleComponents = figma.root.findAll(node => node.type === 'COMPONENT') as ComponentNode[];
+    console.log(`Found ${singleComponents.length} single components`);
+
+    // Strategy 2: Also find components through instances (reverse lookup)
+    console.log('Finding components through instances...');
+    const instances = figma.root.findAll(node => node.type === 'INSTANCE') as InstanceNode[];
+    console.log(`Found ${instances.length} component instances`);
+
+    const componentsFromInstances = new Set<ComponentNode | ComponentSetNode>();
+    for (const instance of instances) {
+      if (instance.mainComponent) {
+        if (instance.mainComponent.parent && instance.mainComponent.parent.type === 'COMPONENT_SET') {
+          componentsFromInstances.add(instance.mainComponent.parent as ComponentSetNode);
+        } else {
+          componentsFromInstances.add(instance.mainComponent);
+        }
+      }
+    }
+    console.log(`Found ${componentsFromInstances.size} additional components through instances`);
+
+    // Strategy 3: Deep search in all pages for missed components
+    console.log('Performing deep search across all pages...');
+    for (const page of figma.root.children) {
+      await this.deepSearchForComponents(page, componentsFromInstances);
     }
 
-    // Process single components
-    for (const component of singleComponents as ComponentNode[]) {
-      // Skip if it's part of a component set
-      if (component.parent && component.parent.type !== 'COMPONENT_SET') {
-        const analyzedComponent = await this.analyzeSingleComponent(component);
-        components.push(analyzedComponent);
+    // Process component sets
+    for (const componentSet of componentSets) {
+      if (!processedComponents.has(componentSet.id)) {
+        try {
+          console.log(`Analyzing component set: ${componentSet.name}`);
+          const analyzedComponent = await this.analyzeComponentSet(componentSet);
+          components.push(analyzedComponent);
+          processedComponents.add(componentSet.id);
+        } catch (error) {
+          console.warn(`Error analyzing component set ${componentSet.name}:`, error);
+        }
       }
     }
 
+    // Process single components (skip if part of component set)
+    for (const component of singleComponents) {
+      if (!processedComponents.has(component.id) && 
+          (!component.parent || component.parent.type !== 'COMPONENT_SET')) {
+        try {
+          console.log(`Analyzing single component: ${component.name}`);
+          const analyzedComponent = await this.analyzeSingleComponent(component);
+          components.push(analyzedComponent);
+          processedComponents.add(component.id);
+        } catch (error) {
+          console.warn(`Error analyzing component ${component.name}:`, error);
+        }
+      }
+    }
+
+    // Process components found through instances
+    for (const componentFromInstance of componentsFromInstances) {
+      if (!processedComponents.has(componentFromInstance.id)) {
+        try {
+          if (componentFromInstance.type === 'COMPONENT_SET') {
+            console.log(`Analyzing component set from instance: ${componentFromInstance.name}`);
+            const analyzedComponent = await this.analyzeComponentSet(componentFromInstance);
+            components.push(analyzedComponent);
+          } else if (componentFromInstance.type === 'COMPONENT') {
+            console.log(`Analyzing component from instance: ${componentFromInstance.name}`);
+            const analyzedComponent = await this.analyzeSingleComponent(componentFromInstance);
+            components.push(analyzedComponent);
+          }
+          processedComponents.add(componentFromInstance.id);
+        } catch (error) {
+          console.warn(`Error analyzing component from instance ${componentFromInstance.name}:`, error);
+        }
+      }
+    }
+
+    console.log(`🎉 Component extraction complete! Found ${components.length} total components`);
+    this.logComponentSummary(components);
+
     return this.sortComponentsByImportance(components);
+  }
+
+  private async deepSearchForComponents(node: BaseNode, foundComponents: Set<ComponentNode | ComponentSetNode>): Promise<void> {
+    // Search for components in nested structures
+    if ('children' in node) {
+      for (const child of node.children) {
+        if (child.type === 'COMPONENT_SET') {
+          foundComponents.add(child as ComponentSetNode);
+        } else if (child.type === 'COMPONENT') {
+          foundComponents.add(child as ComponentNode);
+        } else if (child.type === 'INSTANCE') {
+          const instance = child as InstanceNode;
+          if (instance.mainComponent) {
+            if (instance.mainComponent.parent && instance.mainComponent.parent.type === 'COMPONENT_SET') {
+              foundComponents.add(instance.mainComponent.parent as ComponentSetNode);
+            } else {
+              foundComponents.add(instance.mainComponent);
+            }
+          }
+        }
+        
+        // Recurse into child nodes
+        await this.deepSearchForComponents(child, foundComponents);
+      }
+    }
+  }
+
+  private logComponentSummary(components: AnalyzedComponent[]): void {
+    const summary = components.reduce((acc, comp) => {
+      acc[comp.type] = (acc[comp.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    console.log('📊 Component Summary by Type:');
+    Object.entries(summary).forEach(([type, count]) => {
+      console.log(`  - ${type}: ${count} components`);
+    });
+
+    console.log('\n📝 Found Components:');
+    components.forEach(comp => {
+      console.log(`  - ${comp.name} (${comp.type}) with ${comp.variants.length} variants`);
+    });
   }
 
   private async analyzeComponentSet(componentSet: ComponentSetNode): Promise<AnalyzedComponent> {
@@ -84,7 +251,10 @@ export class ComponentExtractor {
     const componentType = this.determineComponentType(component.name);
     const semanticDescription = this.generateSemanticDescription(component, componentType);
     const accessibility = await this.analyzeAccessibility(component);
-    const usage = this.generateUsageExamples(componentType, component.name);
+    
+    // Analyze component usage through instances
+    const usageAnalysis = await this.analyzeComponentUsage(component);
+    const usage = this.generateUsageExamples(componentType, component.name, usageAnalysis);
     
     // For single components, create a default variant
     const variants: ComponentVariant[] = [{
@@ -106,6 +276,72 @@ export class ComponentExtractor {
       semanticDescription,
       accessibility
     };
+  }
+
+  private async analyzeComponentUsage(component: ComponentNode): Promise<ComponentUsageAnalysis> {
+    const instances = figma.root.findAll(node => 
+      node.type === 'INSTANCE' && (node as InstanceNode).mainComponent?.id === component.id
+    ) as InstanceNode[];
+
+    const usageContexts = new Set<string>();
+    const usageFrequency = instances.length;
+    const pageUsage = new Set<string>();
+
+    for (const instance of instances) {
+      // Analyze where the component is used
+      let currentNode: BaseNode | null = instance.parent;
+      while (currentNode) {
+        if (currentNode.type === 'PAGE') {
+          pageUsage.add(currentNode.name);
+          break;
+        }
+        
+        // Detect usage context from parent names
+        if (currentNode.name) {
+          const parentName = currentNode.name.toLowerCase();
+          if (parentName.includes('form')) usageContexts.add('forms');
+          if (parentName.includes('nav') || parentName.includes('menu')) usageContexts.add('navigation');
+          if (parentName.includes('modal') || parentName.includes('dialog')) usageContexts.add('modals');
+          if (parentName.includes('card') || parentName.includes('list')) usageContexts.add('content-display');
+          if (parentName.includes('header') || parentName.includes('footer')) usageContexts.add('layout');
+        }
+        
+        currentNode = currentNode.parent;
+      }
+    }
+
+    return {
+      instanceCount: usageFrequency,
+      usageContexts: Array.from(usageContexts),
+      pagesUsed: Array.from(pageUsage),
+      examples: instances.slice(0, 5).map(instance => ({
+        name: instance.name,
+        page: this.findParentPage(instance)?.name || 'Unknown',
+        context: this.determineInstanceContext(instance)
+      }))
+    };
+  }
+
+  private findParentPage(node: BaseNode): PageNode | null {
+    let current: BaseNode | null = node;
+    while (current && current.type !== 'PAGE') {
+      current = current.parent;
+    }
+    return current as PageNode | null;
+  }
+
+  private determineInstanceContext(instance: InstanceNode): string {
+    const parent = instance.parent;
+    if (!parent) return 'root';
+    
+    const parentName = parent.name.toLowerCase();
+    if (parentName.includes('form')) return 'form';
+    if (parentName.includes('nav') || parentName.includes('menu')) return 'navigation';
+    if (parentName.includes('modal')) return 'modal';
+    if (parentName.includes('card')) return 'card';
+    if (parentName.includes('list')) return 'list';
+    
+    return parent.type.toLowerCase();
   }
 
   private async extractVariants(componentSet: ComponentSetNode): Promise<ComponentVariant[]> {
@@ -345,8 +581,8 @@ export class ComponentExtractor {
     return baseDescription + contextualInfo;
   }
 
-  private generateUsageExamples(type: AnalyzedComponent['type'], name: string): string[] {
-    const usageMap: Record<string, string[]> = {
+  private generateUsageExamples(type: AnalyzedComponent['type'], name: string, usageAnalysis?: ComponentUsageAnalysis): string[] {
+    const defaultUsageMap: Record<string, string[]> = {
       'button': [
         'Primary call-to-action buttons',
         'Form submission buttons',
@@ -382,14 +618,71 @@ export class ComponentExtractor {
         'Section dividers and containers',
         'Grid systems and responsive layouts',
         'Header, footer, and sidebar components'
+      ],
+      'table': [
+        'Data display and analysis',
+        'Product listings and comparisons',
+        'Dashboard metrics and reports',
+        'User management interfaces'
+      ],
+      'form': [
+        'User registration and login',
+        'Settings and preferences',
+        'Content creation and editing',
+        'Survey and feedback collection'
+      ],
+      'media': [
+        'User profile pictures and avatars',
+        'Product images and galleries',
+        'Brand logos and icons',
+        'Content thumbnails and previews'
+      ],
+      'feedback': [
+        'Loading states during data fetch',
+        'Form validation and error messages',
+        'Success confirmations',
+        'Progress indicators for multi-step processes'
       ]
     };
 
-    return usageMap[type] || [
+    let examples = defaultUsageMap[type] || [
       `Custom usage for ${name} component`,
       'Interface-specific implementations',
       'Brand-specific design patterns'
     ];
+
+    // Enhance with actual usage analysis if available
+    if (usageAnalysis) {
+      const contextBasedExamples: string[] = [];
+      
+      // Add usage frequency information
+      if (usageAnalysis.instanceCount > 0) {
+        contextBasedExamples.push(`Used ${usageAnalysis.instanceCount} times across the design system`);
+      }
+      
+      // Add context-specific examples
+      if (usageAnalysis.usageContexts.length > 0) {
+        contextBasedExamples.push(`Found in: ${usageAnalysis.usageContexts.join(', ')} contexts`);
+      }
+      
+      // Add page-specific usage
+      if (usageAnalysis.pagesUsed.length > 0) {
+        contextBasedExamples.push(`Used on pages: ${usageAnalysis.pagesUsed.slice(0, 3).join(', ')}${usageAnalysis.pagesUsed.length > 3 ? ' and more' : ''}`);
+      }
+      
+      // Add specific usage examples
+      if (usageAnalysis.examples.length > 0) {
+        const specificExamples = usageAnalysis.examples.slice(0, 2).map(example => 
+          `${example.name} in ${example.context} on ${example.page} page`
+        );
+        contextBasedExamples.push(...specificExamples.map(ex => `Example: ${ex}`));
+      }
+      
+      // Combine default and context-based examples
+      examples = [...contextBasedExamples, ...examples.slice(0, 2)];
+    }
+
+    return examples.slice(0, 6); // Limit to 6 examples max
   }
 
   private generateCodeExamples(name: string, type: AnalyzedComponent['type'], variants: ComponentVariant[], props: ComponentProp[]): string[] {
@@ -475,11 +768,15 @@ export class ComponentExtractor {
     const typeOrder: Record<string, number> = {
       'button': 1,
       'input': 2,
-      'card': 3,
-      'navigation': 4,
-      'modal': 5,
-      'layout': 6,
-      'other': 7
+      'form': 3,
+      'card': 4,
+      'table': 5,
+      'navigation': 6,
+      'modal': 7,
+      'media': 8,
+      'feedback': 9,
+      'layout': 10,
+      'other': 11
     };
 
     return components.sort((a, b) => {
@@ -488,7 +785,22 @@ export class ComponentExtractor {
       
       if (aOrder === bOrder) {
         // Sort by number of variants (more variants = more important)
-        return b.variants.length - a.variants.length;
+        if (a.variants.length !== b.variants.length) {
+          return b.variants.length - a.variants.length;
+        }
+        
+        // Then sort by usage frequency if available
+        const aUsage = a.usage.find(u => u.includes('Used ') && u.includes('times'));
+        const bUsage = b.usage.find(u => u.includes('Used ') && u.includes('times'));
+        
+        if (aUsage && bUsage) {
+          const aCount = parseInt(aUsage.match(/\d+/)?.[0] || '0');
+          const bCount = parseInt(bUsage.match(/\d+/)?.[0] || '0');
+          return bCount - aCount;
+        }
+        
+        // Finally sort alphabetically
+        return a.name.localeCompare(b.name);
       }
       
       return aOrder - bOrder;

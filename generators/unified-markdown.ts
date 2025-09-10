@@ -137,6 +137,14 @@ ${this.generateSystemArchitectureDescription(totalVariables, totalPaintStyles, t
       return '';
     }
 
+    // Validate that no aliases remain in color data
+    const colorString = JSON.stringify(colors);
+    if (colorString.includes('VARIABLE_ALIAS')) {
+      console.warn('⚠️ Warning: VARIABLE_ALIAS found in color tokens - aliases may not be fully resolved');
+    } else {
+      console.log('✅ Color tokens validated - no aliases found');
+    }
+
     return `### Colors
 
 \`\`\`json
@@ -199,9 +207,17 @@ ${JSON.stringify({ effects }, null, 2)}
     let library = '## 🧩 Component Library\n\n';
     
     const components = this.data.componentAnalysis.componentUsage || [];
-    const topComponents = components.slice(0, 10); // Focus on most used components
-
-    for (const component of topComponents) {
+    
+    // Categorize components by type for better organization
+    const categorizedComponents = this.categorizeComponentsByType(components);
+    
+    // Display component summary by category
+    library += this.generateComponentCategorySummary(categorizedComponents);
+    
+    // Generate detailed sections for top components from each category
+    const selectedComponents = this.selectDiverseComponents(categorizedComponents, 15);
+    
+    for (const component of selectedComponents) {
       library += this.generateComponentSection(component);
     }
 
@@ -432,10 +448,37 @@ ${this.generateTokenOpportunities()}`;
   }
 
   private extractColorValue(colorData: any): any {
-    if (colorData.modes) {
-      const firstMode = Object.keys(colorData.modes)[0];
-      return colorData.modes[firstMode];
+    // Handle resolved values (direct hex strings or mode objects)
+    if (typeof colorData === 'string' && colorData.startsWith('#')) {
+      // Direct hex value from alias resolution
+      return colorData;
     }
+    
+    if (typeof colorData === 'object' && colorData !== null) {
+      // Check if this is a mode object (light/dark)
+      if (colorData.light || colorData.dark || colorData.default) {
+        return colorData; // Return the mode object as-is for AI tools
+      }
+      
+      // Handle old format with mode IDs
+      if (colorData.modes) {
+        const firstMode = Object.keys(colorData.modes)[0];
+        const modeValue = colorData.modes[firstMode];
+        
+        // If mode value is still an object with hex, extract the hex
+        if (modeValue && typeof modeValue === 'object' && modeValue.hex) {
+          return modeValue.hex;
+        }
+        
+        return modeValue;
+      }
+      
+      // If it has a hex property directly
+      if (colorData.hex) {
+        return colorData.hex;
+      }
+    }
+    
     return colorData;
   }
 
@@ -596,6 +639,106 @@ export function ${componentName}({
     
     const topComponent = components[0];
     return `Most used component is ${topComponent.name}. Follow its patterns for consistency.`;
+  }
+
+  private categorizeComponentsByType(components: any[]): Record<string, any[]> {
+    const categories: Record<string, any[]> = {
+      'Interactive': [],
+      'Form Controls': [],
+      'Layout': [],
+      'Content': [],
+      'Feedback': [],
+      'Navigation': [],
+      'Media': [],
+      'Other': []
+    };
+    
+    const categoryPatterns = {
+      'Interactive': [/btn|button/i, /cta|toggle/i, /switch/i],
+      'Form Controls': [/input|field|form|textarea|select|checkbox|radio/i],
+      'Layout': [/container|wrapper|grid|section|header|footer|layout/i],
+      'Content': [/card|tile|panel|article|item/i],
+      'Feedback': [/loading|spinner|progress|skeleton|toast|alert|error|success/i],
+      'Navigation': [/nav|menu|breadcrumb|tab|stepper|pagination/i],
+      'Media': [/image|img|avatar|icon|logo|video|media/i]
+    };
+    
+    components.forEach(component => {
+      let categorized = false;
+      const name = component.name.toLowerCase();
+      
+      for (const [category, patterns] of Object.entries(categoryPatterns)) {
+        if (patterns.some(pattern => pattern.test(name))) {
+          categories[category].push(component);
+          categorized = true;
+          break;
+        }
+      }
+      
+      if (!categorized) {
+        categories['Other'].push(component);
+      }
+    });
+    
+    return categories;
+  }
+  
+  private generateComponentCategorySummary(categorizedComponents: Record<string, any[]>): string {
+    let summary = '### Component Overview\n\n';
+    
+    const totalComponents = Object.values(categorizedComponents).reduce((sum, cat) => sum + cat.length, 0);
+    summary += `**Total Components Found:** ${totalComponents}\n\n`;
+    
+    const categoryEmojis = {
+      'Interactive': '🎯',
+      'Form Controls': '📝', 
+      'Layout': '📦',
+      'Content': '📄',
+      'Feedback': '💫',
+      'Navigation': '🧭',
+      'Media': '🖼️',
+      'Other': '🔧'
+    };
+    
+    Object.entries(categorizedComponents).forEach(([category, components]) => {
+      if (components.length > 0) {
+        const emoji = categoryEmojis[category as keyof typeof categoryEmojis] || '🔧';
+        summary += `- **${emoji} ${category}:** ${components.length} components\n`;
+      }
+    });
+    
+    summary += '\n';
+    return summary;
+  }
+  
+  private selectDiverseComponents(categorizedComponents: Record<string, any[]>, limit: number): any[] {
+    const selected: any[] = [];
+    const categories = Object.keys(categorizedComponents).filter(cat => 
+      categorizedComponents[cat].length > 0
+    );
+    
+    // Distribute selection across categories to ensure diversity
+    const perCategory = Math.max(1, Math.floor(limit / categories.length));
+    
+    categories.forEach(category => {
+      const categoryComponents = categorizedComponents[category]
+        .sort((a, b) => (b.count || 0) - (a.count || 0)) // Sort by usage
+        .slice(0, perCategory);
+      selected.push(...categoryComponents);
+    });
+    
+    // Fill remaining slots with most used components overall
+    if (selected.length < limit) {
+      const remaining = limit - selected.length;
+      const allComponents = Object.values(categorizedComponents)
+        .flat()
+        .filter(comp => !selected.includes(comp))
+        .sort((a, b) => (b.count || 0) - (a.count || 0))
+        .slice(0, remaining);
+      selected.push(...allComponents);
+    }
+    
+    return selected.slice(0, limit);
   }
 
   private generateTokenOpportunities(): string {

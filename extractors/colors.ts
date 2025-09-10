@@ -1,7 +1,9 @@
-import { ColorToken, SemanticMapping } from '../types';
+import { ColorToken, SemanticMapping, VariableResolutionResult } from '../types';
 import { generateSemanticName, rgbToHex, rgbToHsl, calculateContrastRatio } from '../utils/naming';
+import { EnhancedVariableAliasResolver } from '../utils/variable-resolver';
 
 export class ColorExtractor {
+  private variableResolver: EnhancedVariableAliasResolver;
   private semanticColorMap: Record<string, string> = {
     // Primary brand colors
     'primary': 'brand-primary',
@@ -44,6 +46,10 @@ export class ColorExtractor {
     'outline': 'border-outline'
   };
 
+  constructor() {
+    this.variableResolver = new EnhancedVariableAliasResolver(true);
+  }
+
   async extractColors(): Promise<ColorToken[]> {
     const paintStyles = figma.getLocalPaintStyles();
     const colorTokens: ColorToken[] = [];
@@ -84,6 +90,184 @@ export class ColorExtractor {
     }
 
     return this.sortColorsBySemanticImportance(colorTokens);
+  }
+
+  async extractColorsWithVariableResolution(figmaData: any): Promise<{ tokens: ColorToken[], resolutionStats: any }> {
+    console.log('Starting variable-aware color extraction...');
+    
+    const resolutionResult = this.variableResolver.resolveVariables(figmaData);
+    const colorTokens: ColorToken[] = [];
+    
+    const resolvedData = resolutionResult.resolved;
+    
+    if (resolvedData.colors) {
+      await this.processResolvedColors(resolvedData.colors, colorTokens);
+    }
+    
+    if (resolvedData.variables) {
+      await this.processResolvedVariables(resolvedData.variables, colorTokens);
+    }
+    
+    const paintStyles = figma.getLocalPaintStyles();
+    for (const style of paintStyles) {
+      if (style.paints.length > 0) {
+        const paint = style.paints[0];
+        
+        if (paint.type === 'SOLID' && paint.color) {
+          const existingToken = colorTokens.find(token => 
+            token.name === style.name || 
+            token.semanticName === this.generateSemanticColorName(style.name)
+          );
+          
+          if (!existingToken) {
+            const rgb = {
+              r: Math.round(paint.color.r * 255),
+              g: Math.round(paint.color.g * 255),
+              b: Math.round(paint.color.b * 255)
+            };
+            
+            const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+            const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+            const semanticName = this.generateSemanticColorName(style.name);
+            const semanticRole = this.determineSemanticRole(style.name, hex);
+            
+            const colorToken: ColorToken = {
+              name: style.name,
+              value: hex,
+              type: 'color',
+              hex,
+              rgb,
+              hsl,
+              semanticName,
+              semanticRole,
+              description: style.description || this.generateColorDescription(semanticRole, style.name),
+              usage: this.generateUsageExamples(semanticRole, semanticName),
+              contrastRatio: calculateContrastRatio(hex, '#FFFFFF')
+            };
+            
+            colorTokens.push(colorToken);
+          }
+        }
+      }
+    }
+    
+    return {
+      tokens: this.sortColorsBySemanticImportance(colorTokens),
+      resolutionStats: resolutionResult.resolutionStats
+    };
+  }
+
+  private async processResolvedColors(colors: any, colorTokens: ColorToken[]): Promise<void> {
+    for (const [category, colorGroup] of Object.entries(colors)) {
+      if (typeof colorGroup === 'object' && colorGroup !== null) {
+        for (const [colorName, colorValue] of Object.entries(colorGroup)) {
+          const token = this.createColorTokenFromResolved(category, colorName, colorValue);
+          if (token) {
+            colorTokens.push(token);
+          }
+        }
+      }
+    }
+  }
+
+  private async processResolvedVariables(variables: any, colorTokens: ColorToken[]): Promise<void> {
+    for (const [, variable] of Object.entries(variables)) {
+      if (typeof variable === 'object' && variable && 'type' in variable && variable.type === 'COLOR') {
+        const token = this.createColorTokenFromVariable(variable);
+        if (token) {
+          colorTokens.push(token);
+        }
+      }
+    }
+  }
+
+  private createColorTokenFromResolved(category: string, name: string, value: any): ColorToken | null {
+    let hexValue: string | null = null;
+    let rgbValue: { r: number; g: number; b: number } | null = null;
+    
+    if (typeof value === 'string' && value.startsWith('#')) {
+      hexValue = value;
+      rgbValue = this.hexToRgb(value);
+    } else if (typeof value === 'object') {
+      if (value.light && typeof value.light === 'string' && value.light.startsWith('#')) {
+        hexValue = value.light;
+        rgbValue = this.hexToRgb(value.light);
+      } else if (value.default && typeof value.default === 'string' && value.default.startsWith('#')) {
+        hexValue = value.default;
+        rgbValue = this.hexToRgb(value.default);
+      } else if (value.hex) {
+        hexValue = value.hex;
+        rgbValue = value.rgb || this.hexToRgb(value.hex);
+      }
+    }
+    
+    if (!hexValue || !rgbValue) return null;
+    
+    const fullName = `${category}/${name}`;
+    const semanticName = this.generateSemanticColorName(fullName);
+    const semanticRole = this.determineSemanticRole(fullName, hexValue);
+    const hsl = rgbToHsl(rgbValue.r, rgbValue.g, rgbValue.b);
+    
+    return {
+      name: fullName,
+      value: hexValue,
+      type: 'color',
+      hex: hexValue,
+      rgb: rgbValue,
+      hsl,
+      semanticName,
+      semanticRole,
+      description: `Resolved color from ${category} category`,
+      usage: this.generateUsageExamples(semanticRole, semanticName),
+      contrastRatio: calculateContrastRatio(hexValue, '#FFFFFF')
+    };
+  }
+
+  private createColorTokenFromVariable(variable: any): ColorToken | null {
+    const modes = variable.modes || {};
+    let hexValue: string | null = null;
+    let rgbValue: { r: number; g: number; b: number } | null = null;
+    
+    for (const [, value] of Object.entries(modes)) {
+      if (typeof value === 'string' && value.startsWith('#')) {
+        hexValue = value;
+        rgbValue = this.hexToRgb(value);
+        break;
+      } else if (typeof value === 'object' && value && 'hex' in value) {
+        hexValue = value.hex as string;
+        rgbValue = ('rgb' in value ? value.rgb : this.hexToRgb(value.hex as string)) as { r: number; g: number; b: number };
+        break;
+      }
+    }
+    
+    if (!hexValue || !rgbValue) return null;
+    
+    const semanticName = this.generateSemanticColorName(variable.name);
+    const semanticRole = this.determineSemanticRole(variable.name, hexValue);
+    const hsl = rgbToHsl(rgbValue.r, rgbValue.g, rgbValue.b);
+    
+    return {
+      name: variable.name,
+      value: hexValue,
+      type: 'color',
+      hex: hexValue,
+      rgb: rgbValue,
+      hsl,
+      semanticName,
+      semanticRole,
+      description: variable.description || `Variable color: ${variable.name}`,
+      usage: this.generateUsageExamples(semanticRole, semanticName),
+      contrastRatio: calculateContrastRatio(hexValue, '#FFFFFF')
+    };
+  }
+
+  private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
   }
 
   private generateSemanticColorName(originalName: string): string {

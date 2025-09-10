@@ -8,6 +8,7 @@
       font-family: Arial, sans-serif; 
       padding: 20px; 
       margin: 0;
+      background: #fafafa;
     }
     h2 {
       margin-top: 0;
@@ -33,6 +34,110 @@
       padding: 10px;
       border-radius: 4px;
     }
+
+    /* Morphing Gradient Orb Styles */
+    .extraction-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+    }
+
+    .morphing-orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+      background-size: 300% 300%;
+      animation: morphGradient 3s ease-in-out infinite, orbPulse 2s ease-in-out infinite alternate;
+      position: relative;
+      margin-bottom: 20px;
+      box-shadow: 0 0 30px rgba(255, 107, 107, 0.3);
+    }
+
+    .morphing-orb::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: -5px;
+      right: -5px;
+      bottom: -5px;
+      border-radius: 50%;
+      background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+      background-size: 300% 300%;
+      animation: morphGradient 3s ease-in-out infinite reverse;
+      opacity: 0.5;
+      z-index: -1;
+      filter: blur(10px);
+    }
+
+    @keyframes morphGradient {
+      0% { background-position: 0% 50%; }
+      25% { background-position: 100% 100%; }
+      50% { background-position: 100% 0%; }
+      75% { background-position: 0% 100%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @keyframes orbPulse {
+      0% { 
+        transform: scale(1) rotate(0deg); 
+        box-shadow: 0 0 30px rgba(255, 107, 107, 0.3);
+      }
+      100% { 
+        transform: scale(1.1) rotate(180deg); 
+        box-shadow: 0 0 50px rgba(78, 205, 196, 0.5);
+      }
+    }
+
+    .extraction-status {
+      color: white;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+
+    .extraction-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .extraction-subtitle {
+      font-size: 16px;
+      opacity: 0.9;
+      margin-bottom: 5px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .extraction-progress {
+      font-size: 14px;
+      opacity: 0.8;
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 5px 10px;
+      border-radius: 15px;
+      text-shadow: none;
+    }
+
+    .components-counter {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
   </style>
 </head>
 <body>
@@ -41,10 +146,99 @@
   <button id="close-btn">Close Plugin</button>
   <div id="results">Click "Extract Complete Design System" to analyze your design tokens, component usage, and generate AI-optimized markdown documentation.</div>
   
+  <!-- Extraction Progress Overlay -->
+  <div id="extraction-overlay" class="extraction-overlay">
+    <div class="extraction-status">
+      <div class="extraction-title">DeVibe System</div>
+      <div class="extraction-subtitle" id="extraction-subtitle">Initializing extraction...</div>
+      <div class="extraction-progress" id="extraction-progress">Preparing to scan design system</div>
+    </div>
+    <div class="morphing-orb">
+      <div class="components-counter" id="components-counter">0</div>
+    </div>
+  </div>
+  
   <!-- Working inline script -->
   <script>
     console.log('📄 Setting up working button handler...');
     
+    // Extraction progress state
+    var extractionState = {
+      isExtracting: false,
+      currentStep: 0,
+      componentCount: 0,
+      steps: [
+        { text: 'Initializing extraction...', progress: 'Preparing to scan design system' },
+        { text: 'Scanning variables...', progress: 'Analyzing color tokens and design variables' },
+        { text: 'Processing text styles...', progress: 'Extracting typography and text patterns' },
+        { text: 'Analyzing effects...', progress: 'Processing shadows, blur, and visual effects' },
+        { text: 'Discovering components...', progress: 'Finding and categorizing UI components' },
+        { text: 'Generating documentation...', progress: 'Creating AI-optimized markdown output' },
+        { text: 'Finalizing extraction...', progress: 'Completing design system analysis' }
+      ]
+    };
+
+    function showExtractionOverlay() {
+      var overlay = document.getElementById('extraction-overlay');
+      if (overlay) {
+        overlay.style.display = 'flex';
+        extractionState.isExtracting = true;
+        extractionState.currentStep = 0;
+        extractionState.componentCount = 0;
+        startProgressAnimation();
+      }
+    }
+
+    function hideExtractionOverlay() {
+      var overlay = document.getElementById('extraction-overlay');
+      if (overlay) {
+        overlay.style.display = 'none';
+        extractionState.isExtracting = false;
+      }
+    }
+
+    function updateExtractionStatus(stepIndex, componentCount) {
+      if (!extractionState.isExtracting) return;
+      
+      var subtitle = document.getElementById('extraction-subtitle');
+      var progress = document.getElementById('extraction-progress');
+      var counter = document.getElementById('components-counter');
+      
+      if (stepIndex < extractionState.steps.length) {
+        var step = extractionState.steps[stepIndex];
+        if (subtitle) subtitle.textContent = step.text;
+        if (progress) progress.textContent = step.progress;
+      }
+      
+      if (counter && componentCount !== undefined) {
+        counter.textContent = componentCount;
+        extractionState.componentCount = componentCount;
+      }
+    }
+
+    function startProgressAnimation() {
+      var stepDuration = 800; // ms per step
+      var componentIncrement = 5; // components per step
+      
+      function animateStep() {
+        if (!extractionState.isExtracting) return;
+        
+        updateExtractionStatus(
+          extractionState.currentStep, 
+          extractionState.componentCount + componentIncrement
+        );
+        
+        extractionState.currentStep++;
+        extractionState.componentCount += componentIncrement;
+        
+        if (extractionState.currentStep < extractionState.steps.length) {
+          setTimeout(animateStep, stepDuration);
+        }
+      }
+      
+      setTimeout(animateStep, 200);
+    }
+
     setTimeout(function() {
       var btn = document.getElementById('extract-btn');
       if (btn) {
@@ -53,6 +247,7 @@
         
         btn.onclick = function() {
           console.log('🚀 EXTRACT BUTTON CLICKED - SENDING MESSAGE');
+          showExtractionOverlay();
           try {
             parent.postMessage({ pluginMessage: { type: 'extract-basic' } }, '*');
             console.log('✅ Message sent to plugin');
@@ -61,6 +256,14 @@
           }
         };
         console.log('✅ Working button handler set up');
+      }
+      
+      // Close button handler
+      var closeBtn = document.getElementById('close-btn');
+      if (closeBtn) {
+        closeBtn.onclick = function() {
+          parent.postMessage({ pluginMessage: { type: 'close-plugin' } }, '*');
+        };
       }
     }, 100);
     
@@ -76,6 +279,7 @@
       
       if (message && message.type === 'extraction-complete') {
         console.log('🎉 Extraction complete!');
+        hideExtractionOverlay();
         displayExtractionResults(message);
       }
     });
